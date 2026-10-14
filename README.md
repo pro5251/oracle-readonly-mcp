@@ -89,11 +89,77 @@ codex mcp get oracle_readonly
 
 先使用 `list_objects` 找到 owner，再傳給其他工具；登入帳號可能沒有自己的物件。未提供 owner 時，其他工具預設使用登入帳號。
 
-例如讀取 PACKAGE BODY：
+## 讀取 SP、函式與 Table 欄位結構
+
+以下範例是 MCP 工具名稱與 arguments；請替換 owner、name 為實際名稱。工具只讀取內容，不執行 SP 或函式。
+
+### 先查物件名稱與 owner
+
+`list_objects` 可依物件種類與名稱篩選。登入帳號可能沒有自己的物件，因此建議先找出真正的 owner。
 
 ```json
-{"owner":"APP","name":"ORDER_API","type":"PACKAGE BODY","start_line":1,"limit":200}
+{"name":"list_objects","arguments":{"type":"PROCEDURE","pattern":"%ORDER%","limit":100}}
 ```
+
+查函式或資料表時，將 type 改為 `FUNCTION` 或 `TABLE`。名稱篩選使用 SQL LIKE 的 `%` 與 `_` 萬用字元。
+
+### 方法一：讀取 SP 原始碼
+
+呼叫 `procedure_source`，type 指定 `PROCEDURE`。
+
+```json
+{"name":"procedure_source","arguments":{"owner":"APP","name":"GET_ORDER","type":"PROCEDURE","start_line":1,"limit":200}}
+```
+
+回傳欄位為 `OWNER`、`NAME`、`TYPE`、`LINE`、`TEXT`，按行號排序。超過 200 行時，下一次將 start_line 設為 201；持續讀取至沒有資料。每次 limit 上限為 1000。
+
+Codex 提問範例：「使用 Oracle 唯讀 MCP，讀取 APP.GET_ORDER 的 SP 原始碼，分頁讀取全部內容，不執行它。」
+
+### 方法二：讀取函式程式碼
+
+使用同一個 `procedure_source` 工具，type 改為 `FUNCTION`。
+
+```json
+{"name":"procedure_source","arguments":{"owner":"APP","name":"CALCULATE_AMOUNT","type":"FUNCTION","start_line":1,"limit":200}}
+```
+
+如果函式位於 PACKAGE 內，name 應填 PACKAGE 名稱，type 使用 `PACKAGE` 讀宣告、`PACKAGE BODY` 讀實作；再從回傳文字定位成員函式。它不是獨立的 FUNCTION 物件。
+
+```json
+{"name":"procedure_source","arguments":{"owner":"APP","name":"ORDER_API","type":"PACKAGE BODY","start_line":1,"limit":200}}
+```
+
+Codex 提問範例：「讀取 APP.CALCULATE_AMOUNT 的函式程式碼並解釋計算邏輯，不呼叫函式。」
+
+### 方法三：讀取 Table 欄位結構
+
+呼叫 `table_columns`，依欄位順序回傳：
+
+```json
+{"name":"table_columns","arguments":{"owner":"APP","name":"ORDERS"}}
+```
+
+| 回傳欄位 | 說明 |
+| --- | --- |
+| COLUMN_ID | 欄位順序 |
+| COLUMN_NAME | 欄位名稱 |
+| DATA_TYPE | Oracle 資料型別 |
+| DATA_LENGTH | 儲存長度，單位為 bytes |
+| DATA_PRECISION | 數值精度 |
+| DATA_SCALE | 數值小數位數 |
+| NULLABLE | Y 表示允許 NULL，N 表示不允許 |
+
+主鍵、外鍵、唯一約束等資訊使用 `table_constraints` 補查：
+
+```json
+{"name":"table_constraints","arguments":{"owner":"APP","name":"ORDERS"}}
+```
+
+Codex 提問範例：「列出 APP.ORDERS 的欄位名稱、型別、長度、是否允許 NULL，以及主鍵與外鍵，不讀取資料列。」
+
+### 回傳空白與權限
+
+原始碼由 `ALL_SOURCE` 讀取，欄位由 `ALL_TAB_COLUMNS` 讀取，只能看到連線帳號可存取的資訊。結果空白不一定表示物件不存在；先確認 owner、name、type 與帳號權限。對 synonym，先找到實際物件的 owner 與名稱。Wrapped 原始碼不會被解密。
 
 名稱限定一般未加引號的 Oracle 識別字，會轉大寫；不支援 database link 或含 schema 的複合 name，請分開提供 owner 與 name。
 
