@@ -1,0 +1,5 @@
+{
+  "user": "YOUR_READONLY_USER",
+  "password": "SET_LOCALLY_DO_NOT_COMMIT",
+  "connectString": "//db.example.com:1521/YOUR_SERVICE"
+}

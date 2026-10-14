@@ -1,0 +1,9 @@
+node_modules/
+build/
+*.class
+*.jar
+.env
+.env.*
+connection.json
+connection.*.json
+*.log
